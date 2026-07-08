@@ -1051,8 +1051,9 @@ function normalize(s){
     goals:(sn.goals&&typeof sn.goals==='object')?sn.goals:{} }));
   return s;
 }
+let FIRST_RUN = false;
 function load(){
-  const FIRST_RUN = !localStorage.getItem(LS_KEY);
+  FIRST_RUN = !localStorage.getItem(LS_KEY);
   try { const raw = localStorage.getItem(LS_KEY); state = raw ? normalize(JSON.parse(raw)) : normalize(seedTemplate()); }
 
   catch(e){ state = normalize(seedTemplate()); }
