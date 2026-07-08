@@ -1087,13 +1087,13 @@ function load(){
 }
 let saveTimer = null;
 function save(){
+  if (typeof cloudMarkDirty === 'function') cloudMarkDirty();   // синхронно: applying-флаг ещё актуален
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>{
     const js = JSON.stringify(state);
     try { localStorage.setItem(LS_KEY, js); } catch(e){}
     snapshot(js);
     document.getElementById('savedAt').textContent = 'Сохранено ' + new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
-    if (typeof cloudMarkDirty === 'function') cloudMarkDirty();
     renderHealth();
   }, 250);
 }
