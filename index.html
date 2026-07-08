@@ -1052,6 +1052,7 @@ function normalize(s){
   return s;
 }
 function load(){
+  const FIRST_RUN = !localStorage.getItem(LS_KEY);
   try { const raw = localStorage.getItem(LS_KEY); state = raw ? normalize(JSON.parse(raw)) : normalize(seedTemplate()); }
 
   catch(e){ state = normalize(seedTemplate()); }
@@ -4642,7 +4643,12 @@ updateUndoBtns();
 /* ================= облачная синхронизация (Supabase) ================= */
 const CLOUD_CFG_KEY = 'bsc_cloud_cfg';
 const CLOUD_VER_KEY = 'bsc_cloud_ver';
-function cloudCfg(){ try{ return JSON.parse(localStorage.getItem(CLOUD_CFG_KEY))||null; }catch(e){ return null; } }
+const CLOUD_DEFAULT = {
+  url:  'https://mnhzbihaqicxlkupcdgd.supabase.co',
+  key:  'sb_publishable_6L6PTsHuhdBJR7XMtjuUOg_Df1yKSV1',   // publishable — публичный по дизайну
+  room: 'bi-education'
+};
+function cloudCfg(){ try{ return JSON.parse(localStorage.getItem(CLOUD_CFG_KEY))||CLOUD_DEFAULT; }catch(e){ return CLOUD_DEFAULT; } }
 function cloudHeaders(cfg){
   return { 'apikey': cfg.key, 'Authorization': 'Bearer '+cfg.key, 'Content-Type': 'application/json' };
 }
@@ -4731,6 +4737,22 @@ $('#btnSaveFile').addEventListener('click', ()=>{
 
 /* стартовый вид: вся карта целиком */
 setTimeout(()=>{ if (view === 'map'){ fitOn = true; applyFit(); } }, 0);
+
+/* первый визит (пустой браузер): тихо подтягиваем командную карту из облака */
+if (FIRST_RUN){
+  (async()=>{
+    try{
+      const cfg = cloudCfg(); if (!cfg) return;
+      const row = await cloudFetchRow(cfg);
+      if (row && row.data){
+        state = normalize(row.data);
+        localStorage.setItem(CLOUD_VER_KEY, String(row.ver));
+        save(); renderAll();
+        setTimeout(()=>{ if (view === 'map'){ fitOn = true; applyFit(); } }, 0);
+      }
+    }catch(e){ /* офлайн или песочница — остаёмся на локальной копии */ }
+  })();
+}
 </script>
 
 </html>
