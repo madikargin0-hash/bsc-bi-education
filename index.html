@@ -655,6 +655,7 @@
       <button id="btnCloudPush">☁⬆ Отправить в облако</button>
       <button id="btnCloudPull">☁⬇ Получить из облака</button>
       <button id="btnCloudCfg">☁⚙ Настройки облака</button>
+      <button id="btnCloudHist">🕘 История изменений</button>
       <button id="btnInits">🚀 Все инициативы</button>
       <button id="btnAudit">🔍 Аудит карты</button>
       <button id="btnReport">📝 Статус-отчёт</button>
@@ -4682,6 +4683,7 @@ async function cloudPush(){
       { method:'POST', headers: { ...cloudHeaders(cfg), 'Prefer':'resolution=merge-duplicates' }, body });
     if (!r.ok) throw new Error('HTTP '+r.status+' при записи');
     localStorage.setItem(CLOUD_VER_KEY, String(ver));
+    cloudHistPush(cfg, ver);
     alert('☁ Отправлено. Версия №'+ver+' · автор: '+cloudAuthor());
   }catch(e){ alert('Не удалось отправить: '+e.message); }
 }
@@ -4745,6 +4747,7 @@ async function cloudAutoPush(){
     localStorage.setItem(CLOUD_VER_KEY, String(ver));
     cloudDirty = false;
     setCloudStatus('☁ синхронизировано · v'+ver);
+    cloudHistPush(cfg, ver);
   }catch(e){
     setCloudStatus('☁ офлайн — правки сохранены локально', true);
   }
@@ -4800,6 +4803,111 @@ setInterval(async ()=>{
     }
   }catch(e){}
 }, 5000);
+
+/* ---------- журнал версий и история изменений ---------- */
+async function cloudHistPush(cfg, ver){
+  try{
+    await fetch(cfg.url.replace(/\/$/,'')+'/rest/v1/bsc_history',
+      { method:'POST', headers:{ ...cloudHeaders(cfg), 'Prefer':'resolution=merge-duplicates' },
+        body: JSON.stringify([{ room: cfg.room, ver, updated_by: cloudAuthor(), updated_at: new Date().toISOString(), data: state }]) });
+  }catch(e){}
+}
+function bscDiff(o, n){
+  const out=[];
+  const map=(s,key)=>Object.fromEntries(((s&&s[key])||[]).map(x=>[x.id,x]));
+  if ((o.title||'')!==(n.title||'')) out.push('✏️ Заголовок: «'+o.title+'» → «'+n.title+'»');
+  const ao=map(o,'objectives'), an=map(n,'objectives');
+  for (const id in an) if (!ao[id]) out.push('➕ Цель «'+an[id].title+'»');
+  for (const id in ao) if (!an[id]) out.push('➖ Цель «'+ao[id].title+'» удалена');
+  for (const id in an){
+    const x=ao[id], y=an[id]; if (!x) continue;
+    if (x.title!==y.title) out.push('✏️ Цель: «'+x.title+'» → «'+y.title+'»');
+    const ko=Object.fromEntries((x.kpis||[]).map(k=>[k.id,k])), kn=Object.fromEntries((y.kpis||[]).map(k=>[k.id,k]));
+    for (const k in kn){
+      if (!ko[k]){ out.push('➕ KPI «'+kn[k].name+'» → '+y.title); continue; }
+      const p=ko[k], q=kn[k];
+      if (p.actual!==q.actual) out.push('📊 «'+q.name+'»: факт '+(p.actual||'—')+' → '+(q.actual||'—'));
+      if (p.target!==q.target) out.push('🎯 «'+q.name+'»: цель '+(p.target||'—')+' → '+(q.target||'—'));
+      if (p.name!==q.name)   out.push('✏️ KPI: «'+p.name+'» → «'+q.name+'»');
+    }
+    for (const k in ko) if (!kn[k]) out.push('➖ KPI «'+ko[k].name+'» из «'+y.title+'»');
+    const io=Object.fromEntries((x.inits||[]).map(i=>[i.id,i])), jn=Object.fromEntries((y.inits||[]).map(i=>[i.id,i]));
+    for (const i in jn){
+      if (!io[i]){ out.push('➕ Инициатива «'+jn[i].name+'» → '+y.title); continue; }
+      const p=io[i], q=jn[i];
+      if ((p.actual||'')!==(q.actual||'')) out.push('🚀 «'+q.name+'»: факт '+(p.actual||'—')+' → '+(q.actual||'—'));
+      if ((p.progress|0)!==(q.progress|0)) out.push('🚀 «'+q.name+'»: прогресс '+(p.progress|0)+'% → '+(q.progress|0)+'%');
+      if (!!p.done!==!!q.done) out.push('🚀 «'+q.name+'»: '+(q.done?'завершена ✓':'возвращена в работу'));
+      const sa=(p.steps||[]).filter(s=>s.done).length, sb=(q.steps||[]).filter(s=>s.done).length;
+      if (sa!==sb) out.push('☑️ «'+q.name+'»: чекпоинтов '+sa+' → '+sb);
+      if ((p.due||'')!==(q.due||'')) out.push('📅 «'+q.name+'»: срок '+(p.due||'—')+' → '+(q.due||'—'));
+    }
+    for (const i in io) if (!jn[i]) out.push('➖ Инициатива «'+io[i].name+'»');
+  }
+  const lo=(o.links||[]).length, ln=(n.links||[]).length;
+  if (lo!==ln) out.push((ln>lo?'➕ ':'➖ ')+'Связи: '+lo+' → '+ln);
+  let moved=false;
+  for (const id in an){ const x=ao[id]; if (x && (Math.abs((x.x||0)-(an[id].x||0))>2 || Math.abs((x.ry||0)-(an[id].ry||0))>2)){ moved=true; break; } }
+  const laneCh = JSON.stringify((o.links||[]).map(l=>l.lane)) !== JSON.stringify((n.links||[]).map(l=>l.lane));
+  if (moved || laneCh) out.push('🗺 Изменена раскладка (позиции карточек или стрелок)');
+  if (!out.length) out.push('Без содержательных изменений');
+  return out;
+}
+async function openCloudHist(){
+  const cfg = cloudCfg(); if (!cfg){ openCloudCfg(); return; }
+  const old = document.getElementById('cloudHistWrap'); if (old) old.remove();
+  const wrap = document.createElement('div');
+  wrap.id='cloudHistWrap';
+  wrap.style.cssText='position:fixed;inset:0;z-index:9500;background:rgba(20,25,15,.45);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto';
+  const panel = document.createElement('div');
+  panel.style.cssText='background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:85vh;overflow:auto;padding:22px 26px;font:14px -apple-system,sans-serif;color:#26261C;box-shadow:0 24px 60px -20px rgba(0,0,0,.45)';
+  panel.innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><b style="font-size:17px">🕘 История изменений</b><span style="color:#6E747C;font-size:12px">последние 30 версий · кто и что менял</span><button id="chClose" style="margin-left:auto;border:1.5px solid #C9CCD1;background:#fff;border-radius:8px;padding:5px 12px;font-weight:700;cursor:pointer">Закрыть</button></div><div id="chBody" style="color:#6E747C">Загружаю…</div>';
+  wrap.appendChild(panel); document.body.appendChild(wrap);
+  wrap.addEventListener('click', e=>{ if (e.target===wrap) wrap.remove(); });
+  panel.querySelector('#chClose').onclick=()=>wrap.remove();
+  try{
+    const r = await fetch(cfg.url.replace(/\/$/,'')+'/rest/v1/bsc_history?room=eq.'+encodeURIComponent(cfg.room)+'&select=ver,updated_by,updated_at,data&order=ver.desc&limit=30',
+      { headers: cloudHeaders(cfg) });
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    const rows = await r.json();
+    const body = panel.querySelector('#chBody');
+    if (!rows.length){ body.textContent='Журнал пока пуст — он наполняется с каждой новой отправкой в облако.'; return; }
+    body.innerHTML='';
+    rows.forEach((row,i)=>{
+      const prev = rows[i+1];
+      const diffs = prev ? bscDiff(prev.data, row.data) : ['Первая версия в журнале — точка отсчёта'];
+      const when = String(row.updated_at||'').slice(0,16).replace('T',' ');
+      const item = document.createElement('div');
+      item.style.cssText='border:1.5px solid #E2E4E7;border-radius:10px;padding:10px 14px;margin-bottom:10px';
+      const shown = diffs.slice(0,14);
+      item.innerHTML='<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">'
+        +'<b>Версия №'+row.ver+'</b><span style="color:#0E5E5A;font-weight:700">'+(row.updated_by||'без имени')+'</span>'
+        +'<span style="color:#6E747C;font-size:12px">'+when+'</span>'
+        +(i>0?'<button data-restore="'+i+'" style="margin-left:auto;border:1.5px solid #7A7A2E;background:#fff;border-radius:7px;padding:3px 10px;font-size:12px;font-weight:700;cursor:pointer">↩ Восстановить</button>':'<span style="margin-left:auto;font-size:11px;color:#7A7A2E;font-weight:700">ТЕКУЩАЯ</span>')
+        +'</div><ul style="margin:8px 0 0;padding-left:20px;font-size:13px;line-height:1.55">'
+        +shown.map(s=>'<li>'+s.replace(/</g,'&lt;')+'</li>').join('')
+        +(diffs.length>shown.length?'<li style="color:#6E747C">…и ещё '+(diffs.length-shown.length)+' изменений</li>':'')
+        +'</ul>';
+      body.appendChild(item);
+    });
+    body.addEventListener('click', async e=>{
+      const b = e.target.closest('[data-restore]'); if (!b) return;
+      const row = rows[+b.dataset.restore];
+      if (!confirm('Восстановить версию №'+row.ver+' от '+(row.updated_by||'?')+'?\nОна станет новой текущей версией для всей команды (история сохранится).')) return;
+      snapshot(JSON.stringify(state));
+      cloudApplying = true;
+      state = normalize(row.data);
+      save(); closeEditor(); renderAll();
+      cloudApplying = false;
+      cloudDirty = true;              // уйдёт наверх как новая версия от вашего имени
+      cloudAutoPush();
+      wrap.remove();
+    });
+  }catch(e){
+    panel.querySelector('#chBody').textContent='Не удалось загрузить историю: '+e.message+' (проверьте, что таблица bsc_history создана)';
+  }
+}
+$('#btnCloudHist').addEventListener('click', openCloudHist);
 
 $('#btnCloudPush').addEventListener('click', cloudPush);
 $('#btnCloudPull').addEventListener('click', cloudPull);
