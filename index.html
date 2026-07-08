@@ -637,6 +637,7 @@
   <button class="tb ghost" id="btnRedo" title="Вернуть (Cmd+Shift+Z)">↷</button>
   <button class="tb" id="btnFit">🔍 Вся карта</button>
   <button class="tb" id="btnSaveFile" title="Скачать автономный HTML-файл с текущими данными — работает офлайн">💾 Файл</button>
+  <span id="cloudStatus" title="Живая синхронизация с командным облаком" style="font:600 11px -apple-system,sans-serif;color:#6E747C;align-self:center;margin:0 4px;white-space:nowrap"></span>
   <button class="tb" id="btnPres">▶ Презентация</button>
   <button class="tb" id="btnStandup">🔥 Оперативка</button>
   <span class="tmenu"><button class="tb tlab">Вид ▾</button>
@@ -1092,6 +1093,7 @@ function save(){
     try { localStorage.setItem(LS_KEY, js); } catch(e){}
     snapshot(js);
     document.getElementById('savedAt').textContent = 'Сохранено ' + new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+    if (typeof cloudMarkDirty === 'function') cloudMarkDirty();
     renderHealth();
   }, 250);
 }
@@ -4691,9 +4693,12 @@ async function cloudPull(){
     if (!row){ alert('В облаке пока пусто — сначала кто-то должен «Отправить в облако».'); return; }
     if (!confirm('Получить версию №'+row.ver+' от '+(row.updated_by||'?')+' ('+String(row.updated_at||'').slice(0,16).replace('T',' ')+')?\nВаша текущая карта будет заменена (Cmd+Z вернёт).')) return;
     snapshot(JSON.stringify(state));
+    cloudApplying = true;
     state = normalize(row.data);
     localStorage.setItem(CLOUD_VER_KEY, String(row.ver));
     save(); closeEditor(); renderAll();
+    cloudApplying = false; cloudDirty = false;
+    setCloudStatus('☁ синхронизировано · v'+row.ver);
     alert('☁ Получено: версия №'+row.ver);
   }catch(e){ alert('Не удалось получить: '+e.message); }
 }
@@ -4706,6 +4711,96 @@ function openCloudCfg(){
   localStorage.setItem(CLOUD_CFG_KEY, JSON.stringify({ url:url.trim(), key:key.trim(), room:(room.trim()||'bi-education') }));
   alert('Сохранено. Теперь работают «Отправить/Получить из облака».');
 }
+/* ---------- живой режим: автоотправка + автополучение ---------- */
+let cloudDirty = false, cloudBusy = false, cloudApplying = false, cloudPushT = null;
+function setCloudStatus(t, warn){
+  const el = document.getElementById('cloudStatus'); if (!el) return;
+  el.textContent = t; el.style.color = warn ? '#B0533C' : '#6E747C';
+}
+function cloudMarkDirty(){
+  if (cloudApplying) return;
+  cloudDirty = true;
+  setCloudStatus('☁ есть несохранённое…');
+  clearTimeout(cloudPushT);
+  cloudPushT = setTimeout(cloudAutoPush, 2500);
+}
+async function cloudAutoPush(){
+  if (!cloudDirty || cloudBusy) return;
+  const cfg = cloudCfg(); if (!cfg) return;
+  cloudBusy = true;
+  setCloudStatus('☁ отправка…');
+  try{
+    const row = await cloudFetchRow(cfg);
+    const lastVer = +(localStorage.getItem(CLOUD_VER_KEY)||0);
+    if (row && row.ver > lastVer){        // кто-то успел раньше, а у нас свои правки
+      cloudBusy = false;
+      showCloudBanner(row);
+      return;
+    }
+    const ver = (row ? row.ver : 0) + 1;
+    const body = JSON.stringify([{ id: cfg.room, ver, updated_by: cloudAuthor(), updated_at: new Date().toISOString(), data: state }]);
+    const r = await fetch(cfg.url.replace(/\/$/,'')+'/rest/v1/bsc_rooms',
+      { method:'POST', headers: { ...cloudHeaders(cfg), 'Prefer':'resolution=merge-duplicates' }, body });
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    localStorage.setItem(CLOUD_VER_KEY, String(ver));
+    cloudDirty = false;
+    setCloudStatus('☁ синхронизировано · v'+ver);
+  }catch(e){
+    setCloudStatus('☁ офлайн — правки сохранены локально', true);
+  }
+  cloudBusy = false;
+}
+async function cloudApplyRemote(){
+  const cfg = cloudCfg(); if (!cfg || cloudBusy) return;
+  cloudBusy = true;
+  try{
+    const row = await cloudFetchRow(cfg);
+    if (row && row.data){
+      cloudApplying = true;
+      state = normalize(row.data);
+      localStorage.setItem(CLOUD_VER_KEY, String(row.ver));
+      save(); closeEditor(); renderAll();
+      cloudApplying = false;
+      cloudDirty = false;
+      setCloudStatus('☁ обновлено · v'+row.ver+' от '+(row.updated_by||'коллеги'));
+    }
+  }catch(e){}
+  cloudBusy = false;
+}
+function showCloudBanner(row){
+  if (document.getElementById('cloudBanner')) return;
+  const d = document.createElement('div');
+  d.id = 'cloudBanner';
+  d.style.cssText = 'position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:9000;background:#FFF3CD;border:1.5px solid #D9A33B;border-top:none;border-radius:0 0 10px 10px;padding:10px 16px;font:600 13px -apple-system,sans-serif;color:#5A4A12;display:flex;gap:10px;align-items:center;box-shadow:0 8px 24px -8px rgba(0,0,0,.25)';
+  d.innerHTML = '⚠ '+(row.updated_by||'Коллега')+' сохранил версию №'+row.ver+', а у вас есть свои правки. '
+    +'<button id="cbTake" style="font:700 12px -apple-system,sans-serif;padding:5px 10px;border-radius:6px;border:1.5px solid #7A7A2E;background:#fff;cursor:pointer">Взять его версию</button>'
+    +'<button id="cbForce" style="font:700 12px -apple-system,sans-serif;padding:5px 10px;border-radius:6px;border:1.5px solid #B0533C;background:#fff;color:#B0533C;cursor:pointer">Отправить мою поверх</button>';
+  document.body.appendChild(d);
+  document.getElementById('cbTake').onclick = async ()=>{ d.remove(); await cloudApplyRemote(); };
+  document.getElementById('cbForce').onclick = async ()=>{
+    d.remove();
+    localStorage.setItem(CLOUD_VER_KEY, String(row.ver));   // принимаем их номер как базу и пишем поверх
+    cloudDirty = true;
+    await cloudAutoPush();
+  };
+}
+/* пульс: каждые 5 секунд сверяем номер версии в облаке */
+setInterval(async ()=>{
+  if (cloudBusy) return;
+  const cfg = cloudCfg(); if (!cfg) return;
+  try{
+    const r = await fetch(cfg.url.replace(/\/$/,'')+'/rest/v1/bsc_rooms?id=eq.'+encodeURIComponent(cfg.room)+'&select=ver,updated_by',
+      { headers: cloudHeaders(cfg) });
+    if (!r.ok) return;
+    const rows = await r.json(); const row = rows[0]; if (!row) return;
+    const lastVer = +(localStorage.getItem(CLOUD_VER_KEY)||0);
+    if (row.ver > lastVer){
+      if (cloudDirty) showCloudBanner(row);
+      else cloudApplyRemote();
+    }
+  }catch(e){}
+}, 5000);
+
 $('#btnCloudPush').addEventListener('click', cloudPush);
 $('#btnCloudPull').addEventListener('click', cloudPull);
 $('#btnCloudCfg').addEventListener('click', openCloudCfg);
@@ -4746,9 +4841,12 @@ if (FIRST_RUN){
       const cfg = cloudCfg(); if (!cfg) return;
       const row = await cloudFetchRow(cfg);
       if (row && row.data){
+        cloudApplying = true;
         state = normalize(row.data);
         localStorage.setItem(CLOUD_VER_KEY, String(row.ver));
         save(); renderAll();
+        cloudApplying = false;
+        setCloudStatus('☁ синхронизировано · v'+row.ver);
         setTimeout(()=>{ if (view === 'map'){ fitOn = true; applyFit(); } }, 0);
       }
     }catch(e){ /* офлайн или песочница — остаёмся на локальной копии */ }
