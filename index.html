@@ -698,6 +698,7 @@
       <button id="btnCloudCfg">☁⚙ Настройки облака</button>
       <button id="btnCloudHist">🕘 История изменений</button>
       <button id="btnTgCfg">✈️ Telegram-уведомления</button>
+      <button id="btnAuthor">👤 Автор правок</button>
       <button id="btnInits">🚀 Все инициативы</button>
       <button id="btnAudit">🔍 Аудит карты</button>
       <button id="btnReport">📝 Статус-отчёт</button>
@@ -5421,6 +5422,54 @@ async function openCloudHist(){
 }
 $('#btnCloudHist').addEventListener('click', openCloudHist);
 
+/* ---------- v17.4: именные правки — обязательный выбор автора ---------- */
+function authorValid(){
+  const a = localStorage.getItem('bsc_note_author');
+  return !!(a && state.people.some(p=>p.id===a));
+}
+function openAuthorPick(force){
+  const esc = t=>String(t).replace(/</g,'&lt;');
+  if (document.querySelector('.authovl')) return;
+  if (!state.people.length) return;
+  const ovl = document.createElement('div');
+  ovl.className = 'pdovl authovl';
+  const cur = localStorage.getItem('bsc_note_author');
+  const card = document.createElement('div');
+  card.style.cssText = 'background:#fff;border-radius:14px;max-width:420px;width:100%;padding:22px 24px;box-shadow:0 18px 60px rgba(0,0,0,.35);font-size:14px';
+  card.innerHTML = '<div style="font-weight:800;font-size:17px;margin-bottom:4px">👤 Кто вносит правки?</div>'
+    +'<div style="color:#5b6b60;margin-bottom:14px">Выберите себя — все изменения карты в облаке будут подписаны этим именем.</div>'
+    +'<div class="authlist"></div>'
+    +(force?'':'<div style="margin-top:12px;text-align:center"><a href="#" class="authguest" style="color:#8a978d;font-size:12px">Я только смотрю (гость)</a></div>');
+  const list = card.querySelector('.authlist');
+  list.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto';
+  state.people.slice().sort((a,b)=>a.name.localeCompare(b.name,'ru')).forEach(p=>{
+    const b = document.createElement('button');
+    b.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 12px;border:1.5px solid '+(p.id===cur?'#0E5E5A':'#dfe7e1')+';border-radius:10px;background:'+(p.id===cur?'#eef7f3':'#fff')+';cursor:pointer;font-size:14px;text-align:left';
+    b.innerHTML = '<span style="width:22px;height:22px;border-radius:50%;background:'+p.color+';display:inline-block;flex:none"></span><b>'+esc(p.name)+'</b>'+(p.id===cur?'<span style="color:#0E5E5A;margin-left:auto">✓ сейчас</span>':'');
+    b.addEventListener('click', ()=>{
+      localStorage.setItem('bsc_note_author', p.id);
+      ovl.remove();
+      setCloudStatus('👤 правки подписываются: '+p.name);
+      const bm = $('#btnAuthor'); if (bm) bm.textContent = '👤 Автор: '+p.name;
+    });
+    list.appendChild(b);
+  });
+  const g = card.querySelector('.authguest');
+  if (g) g.addEventListener('click', e=>{ e.preventDefault(); sessionStorage.setItem('bsc_guest','1'); ovl.remove(); });
+  if (force) ovl.addEventListener('click', e=>{ if (e.target === ovl) ovl.remove(); });
+  ovl.appendChild(card);
+  document.body.appendChild(ovl);
+}
+$('#btnAuthor').addEventListener('click', ()=>openAuthorPick(true));
+function authorKick(){
+  const bm = $('#btnAuthor');
+  if (authorValid()){ if (bm) bm.textContent = '👤 Автор: '+cloudAuthor(); return; }
+  if (sessionStorage.getItem('bsc_guest')) return;
+  if (state.people.length){ openAuthorPick(false); return; }
+  if ((authorKick.n = (authorKick.n||0)+1) < 6) setTimeout(authorKick, 3000);
+}
+setTimeout(authorKick, 3200);
+
 $('#btnCloudPush').addEventListener('click', cloudPush);
 $('#btnCloudPull').addEventListener('click', cloudPull);
 $('#btnCloudCfg').addEventListener('click', openCloudCfg);
@@ -5451,8 +5500,8 @@ $('#btnSaveFile').addEventListener('click', ()=>{
   }
 });
 
-/* стартовый вид: вся карта целиком */
-setTimeout(()=>{ if (view === 'map'){ fitOn = true; applyFit(); } }, 0);
+/* стартовый вид: карта в 25% (v17.4) */
+setTimeout(()=>{ if (view === 'map'){ fitOn = false; setZoom(0.25); } }, 0);
 
 setTimeout(pdcaSignalCheck, 1200);
 
@@ -5469,11 +5518,9 @@ if (FIRST_RUN){
         save(); renderAll();
         cloudApplying = false;
         setCloudStatus('☁ синхронизировано · v'+row.ver);
-        setTimeout(()=>{ if (view === 'map'){ fitOn = true; applyFit(); } }, 0);
+        setTimeout(()=>{ if (view === 'map'){ fitOn = false; setZoom(0.25); } }, 0);
       }
     }catch(e){ /* офлайн или песочница — остаёмся на локальной копии */ }
   })();
 }
 </script>
-
-</html>
