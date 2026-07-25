@@ -654,6 +654,9 @@
   .pdcard .acts button:hover{background:#F1F1DC;}
   .pdcard .acts .pri{border-color:#0E5E5A;color:#0E5E5A;}
   .pdcard .acts .neg{border-color:#B0533C;color:#B0533C;}
+  .pdcard{cursor:grab;}
+  .pdcard.dragging{opacity:.45;cursor:grabbing;}
+  .pdcol.dover,.pddrafts.dover{outline:2.5px dashed #0E5E5A;outline-offset:-4px;background:#EDF4EF;}
   .pdovl{position:fixed;inset:0;background:rgba(20,25,15,.45);z-index:9600;display:flex;align-items:flex-start;justify-content:center;padding:46px 16px;overflow:auto;}
   .pdform{background:#fff;border-radius:14px;padding:20px 24px;max-width:560px;width:100%;font:14px -apple-system,sans-serif;box-shadow:0 24px 60px -20px rgba(0,0,0,.45);}
   .pdform label{display:block;font-size:11px;font-weight:800;letter-spacing:.8px;color:#6E747C;margin:10px 0 3px;}
@@ -4749,6 +4752,39 @@ function hypoMetricLabel(hp){ const k=hypoKpi(hp); return k ? k.name : (hp.metri
 function hypoOverdue(hp){ return (hp.status==='do'||hp.status==='check') && hp.checkDue && hp.checkDue < todayStr(); }
 function hypoOwnerName(id){ const p=personOf(id); if(p) return p.name; const g=groupOf(id); return g?g.name:'—'; }
 
+function pdReadyErr(hp){
+  const errs=[];
+  if (!hp.kpiId && !(hp.metricName && hp.expect)) errs.push('метрика (KPI карты или своя с ожиданием)');
+  if (!hp.checkDue) errs.push('срок Check');
+  if (!hp.owner) errs.push('ответственный');
+  return errs;
+}
+function pdMoveTo(hp, to){
+  if (hp.status===to) return;
+  if (to==='do'){
+    const errs = pdReadyErr(hp);
+    if (errs.length){ alert('В работу — только оформленная гипотеза.\nНе хватает: '+errs.join(', ')+'.'); openHypoForm(hp); return; }
+    hp.status='do'; save(); renderPdca(); return;
+  }
+  if (to==='check'){
+    if (hp.status==='plan'){ const errs=pdReadyErr(hp); if (errs.length){ alert('Сначала оформите гипотезу: '+errs.join(', ')+'.'); openHypoForm(hp); return; } }
+    const k = hypoKpi(hp);
+    if (k && k.actual!=='' && hp.fact==='') hp.fact = String(k.actual);
+    hp.status='check'; save(); renderPdca(); return;
+  }
+  if (to==='kept' || to==='failed'){ hypoOutcome(hp, to==='kept'); return; }   // статус сменится после ввода вывода
+  if (to==='plan'){ hp.status='plan'; save(); renderPdca(); }
+}
+function pdDropzone(el, st){
+  el.addEventListener('dragover', e=>{ e.preventDefault(); e.dataTransfer.dropEffect='move'; el.classList.add('dover'); });
+  el.addEventListener('dragleave', ()=>el.classList.remove('dover'));
+  el.addEventListener('drop', e=>{
+    e.preventDefault(); el.classList.remove('dover');
+    const id = e.dataTransfer.getData('text/plain');
+    const hp = (state.hypotheses||[]).find(x=>x.id===id);
+    if (hp) pdMoveTo(hp, st);
+  });
+}
 function renderPdca(){
   const root = $('#viewPdca'); root.innerHTML='';
   const hs = state.hypotheses||[];
@@ -4765,6 +4801,7 @@ function renderPdca(){
   const drafts = hs.filter(x=>x.status==='plan');
   if (drafts.length){
     const dz = h('div',{class:'pddrafts'}, h('div',{class:'cap'},'PLAN · ЧЕРНОВИКИ — ОФОРМИТЕ МЕТРИКУ И СРОК, ЧТОБЫ ВЗЯТЬ В РАБОТУ'));
+    pdDropzone(dz,'plan');
     drafts.forEach(hp=>dz.append(hypoCard(hp)));
     root.append(dz);
   }
@@ -4772,6 +4809,7 @@ function renderPdca(){
   const board = h('div',{class:'pdboard'});
   [['do','В РАБОТЕ (DO)'],['check','НА ПРОВЕРКЕ (CHECK)'],['kept','ЗАКРЕПЛЕНО (ACT)'],['failed','ПРОВАЛЕНО (ACT)']].forEach(([st,cap])=>{
     const col = h('div',{class:'pdcol', dataset:{st}});
+    pdDropzone(col, st);
     col.append(h('div',{class:'ch'}, h('span',null,cap), h('span',null,String(cnt(st)))));
     hs.filter(x=>x.status===st)
       .sort((a,b)=>(a.checkDue||'9999').localeCompare(b.checkDue||'9999'))
@@ -4785,6 +4823,9 @@ function hypoCard(hp){
   const g = hp.goalId ? obj(hp.goalId) : null;
   const late = hypoOverdue(hp);
   const el = h('div',{class:'pdcard'+(late?' overdue':''), dataset:{st:hp.status}});
+  el.draggable = true;
+  el.addEventListener('dragstart', ev=>{ ev.dataTransfer.setData('text/plain', hp.id); ev.dataTransfer.effectAllowed='move'; el.classList.add('dragging'); });
+  el.addEventListener('dragend', ()=>el.classList.remove('dragging'));
   el.append(h('div',{class:'tt'},(late?'⚠ ':'')+hp.text));
   const k = hypoKpi(hp);
   const mtxt = hypoMetricLabel(hp)+': '+(hp.base||'—')+' → ждём '+(hp.expect||'—')
@@ -4800,33 +4841,14 @@ function hypoCard(hp){
   if (hp.lesson) el.append(h('div',{class:'lesson'},'Вывод: '+hp.lesson));
 
   const acts = h('div',{class:'acts'});
-  const readyErr = ()=>{
-    const errs=[];
-    if (!hp.kpiId && !(hp.metricName && hp.expect)) errs.push('метрика (KPI карты или своя с ожиданием)');
-    if (!hp.checkDue) errs.push('срок Check');
-    if (!hp.owner) errs.push('ответственный');
-    return errs;
-  };
-  if (hp.status==='plan'){
-    acts.append(h('button',{class:'pri', onclick:()=>{
-      const errs=readyErr();
-      if (errs.length){ alert('В работу — только оформленная гипотеза.\nНе хватает: '+errs.join(', ')+'.'); openHypoForm(hp); return; }
-      hp.status='do'; save(); renderPdca();
-    }},'▶ В работу'));
-  }
-  if (hp.status==='do'){
-    acts.append(h('button',{class:'pri', onclick:()=>{
-      const k2=hypoKpi(hp);
-      if (k2 && k2.actual!=='' && hp.fact==='') hp.fact=String(k2.actual);
-      hp.status='check'; save(); renderPdca();
-    }},'→ На проверку'));
-  }
+  if (hp.status==='plan')  acts.append(h('button',{class:'pri', onclick:()=>pdMoveTo(hp,'do')},'▶ В работу'));
+  if (hp.status==='do')    acts.append(h('button',{class:'pri', onclick:()=>pdMoveTo(hp,'check')},'→ На проверку'));
   if (hp.status==='check'){
-    acts.append(h('button',{class:'pri', onclick:()=>hypoOutcome(hp,true)},'✔ Закрепить'));
-    acts.append(h('button',{class:'neg', onclick:()=>hypoOutcome(hp,false)},'✘ Отбросить'));
+    acts.append(h('button',{class:'pri', onclick:()=>pdMoveTo(hp,'kept')},'✔ Закрепить'));
+    acts.append(h('button',{class:'neg', onclick:()=>pdMoveTo(hp,'failed')},'✘ Отбросить'));
   }
   if (hp.status==='kept'||hp.status==='failed'){
-    acts.append(h('button',{onclick:()=>{ hp.status='do'; save(); renderPdca(); }},'↩ Снова в работу'));
+    acts.append(h('button',{onclick:()=>pdMoveTo(hp,'do')},'↩ Снова в работу'));
   }
   acts.append(h('button',{onclick:()=>openHypoForm(hp)},'✎'));
   acts.append(h('button',{class:'neg', onclick:()=>{
