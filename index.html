@@ -697,6 +697,7 @@
       <button id="btnCloudPull">☁⬇ Получить из облака</button>
       <button id="btnCloudCfg">☁⚙ Настройки облака</button>
       <button id="btnCloudHist">🕘 История изменений</button>
+      <button id="btnTgCfg">✈️ Telegram-уведомления</button>
       <button id="btnInits">🚀 Все инициативы</button>
       <button id="btnAudit">🔍 Аудит карты</button>
       <button id="btnReport">📝 Статус-отчёт</button>
@@ -1103,6 +1104,7 @@ function normalize(s){
     signalTo: hh.signalTo||null,
     lesson: String(hh.lesson||''),
     linkId: hh.linkId||null,
+    tgPing: String(hh.tgPing||''),
     ts: String(hh.ts||'')
   }));
   s.snapshots = (Array.isArray(s.snapshots)?s.snapshots:[]).map(sn=>({
@@ -4902,6 +4904,7 @@ function hypoOutcome(hp, keep){
       if (ln) ln.status = keep ? 'ok' : 'no';
     }
     save(); wrap.remove(); renderPdca(); renderCanvas && renderCanvas();
+    tgOutcomeNotify(hp, keep);
   }}, keep?'Закрепить':'Отбросить с выводом'));
   form.append(btns);
   wrap.append(form); document.body.append(wrap);
@@ -5004,6 +5007,105 @@ function pdcaSignalCheck(){
   d.querySelector('#pdSigGo').onclick=()=>{ d.remove(); switchView('pdca'); };
   d.querySelector('#pdSigX').onclick=()=>d.remove();
 }
+
+/* ================= Telegram-сигналы PDCA ================= */
+let TG = null;                     // {token, chatId} — общий для команды, живёт в облаке
+async function tgLoadCfg(){
+  const cfg = cloudCfg(); if (!cfg) return null;
+  try{
+    const r = await fetch(cfg.url.replace(/\/$/,'')+'/rest/v1/bsc_rooms?id=eq.'+encodeURIComponent(cfg.room+'#tg')+'&select=data',
+      { headers: cloudHeaders(cfg) });
+    if (r.ok){ const rows = await r.json(); TG = rows[0] && rows[0].data && rows[0].data.token ? rows[0].data : null; }
+  }catch(e){}
+  return TG;
+}
+async function tgSaveCfg(token, chatId){
+  const cfg = cloudCfg(); if (!cfg) return false;
+  try{
+    const r = await fetch(cfg.url.replace(/\/$/,'')+'/rest/v1/bsc_rooms',
+      { method:'POST', headers:{ ...cloudHeaders(cfg), 'Prefer':'resolution=merge-duplicates' },
+        body: JSON.stringify([{ id: cfg.room+'#tg', ver: 1, updated_by: cloudAuthor(), updated_at: new Date().toISOString(), data:{ token, chatId } }]) });
+    if (r.ok){ TG = { token, chatId }; return true; }
+  }catch(e){}
+  return false;
+}
+async function tgSend(text){
+  if (!TG || !TG.token || !TG.chatId) return false;
+  try{
+    const r = await fetch('https://api.telegram.org/bot'+TG.token+'/sendMessage',
+      { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ chat_id: TG.chatId, text, parse_mode:'HTML', disable_web_page_preview:true }) });
+    return r.ok;
+  }catch(e){ return false; }
+}
+/* сигналы: просрочка Check — раз в сутки на гипотезу; закрытие — сразу */
+async function tgPdcaSweep(){
+  if (!TG || !TG.token) return;
+  const today = todayStr();
+  let touched = false;
+  for (const hp of (state.hypotheses||[])){
+    if (hypoOverdue(hp) && hp.tgPing !== today){
+      hp.tgPing = today; touched = true;
+      tgSend('⚠️ <b>PDCA: просрочена проверка</b>\n«'+hp.text+'»\n📏 '+hypoMetricLabel(hp)+': '+(hp.base||'—')+' → ждали '+(hp.expect||'—')
+        +'\n📅 Check был '+hp.checkDue+'\n👤 Ответственный: '+hypoOwnerName(hp.owner)
+        +(hp.signalTo?'\n🔔 Сигнал: '+hypoOwnerName(hp.signalTo):'')
+        +'\n\nОткрыть доску: https://madikargin0-hash.github.io/bsc-bi-education/');
+    }
+  }
+  if (touched) save();
+}
+function tgOutcomeNotify(hp, keep){
+  if (!TG || !TG.token) return;
+  tgSend((keep?'✅ <b>PDCA: гипотеза ЗАКРЕПЛЕНА</b>':'❌ <b>PDCA: гипотеза отброшена</b>')
+    +'\n«'+hp.text+'»\n📏 '+hypoMetricLabel(hp)+': ждали '+(hp.expect||'—')+' → факт '+(hp.fact||'—')
+    +'\n💡 Вывод: '+hp.lesson
+    +'\n👤 '+cloudAuthor());
+}
+function openTgCfg(){
+  const wrap = h('div',{class:'pdovl'});
+  const form = h('div',{class:'pdform'});
+  form.append(h('b',{style:'font-size:15px'},'✈️ Telegram-уведомления PDCA'));
+  form.append(h('div',{style:'font-size:12px;color:#6E747C;margin-top:6px;line-height:1.5'},
+    '1) В Telegram напишите @BotFather → /newbot → получите токен. 2) Добавьте бота в командный чат (или напишите ему лично) и отправьте туда любое сообщение. 3) Вставьте токен сюда и нажмите «Определить chat ID».'));
+  form.append(h('label',null,'ТОКЕН БОТА'));
+  const fTok = h('input',{placeholder:'1234567890:AA…', value: TG&&TG.token||''});
+  form.append(fTok);
+  form.append(h('label',null,'CHAT ID (куда слать)'));
+  const fChat = h('input',{placeholder:'-100123456789 или id личного чата', value: TG&&TG.chatId||''});
+  form.append(fChat);
+  const msg = h('div',{style:'font-size:12px;margin-top:8px;min-height:16px;color:#0E5E5A;font-weight:600'});
+  form.append(msg);
+  form.append(h('div',{style:'font-size:11px;color:#B0533C;margin-top:6px'},
+    '⚠ Токен хранится в общем облаке команды — его увидит любой участник. Заведите отдельного бота только для этих уведомлений.'));
+  const btns = h('div',{class:'btns'});
+  btns.append(h('button',{onclick:async ()=>{
+    const t=fTok.value.trim(); if(!t){ msg.textContent='Сначала вставьте токен.'; return; }
+    msg.textContent='Ищу chat ID…';
+    try{
+      const r = await fetch('https://api.telegram.org/bot'+t+'/getUpdates');
+      const j = await r.json();
+      const upd = (j.result||[]).reverse().find(u=>u.message&&u.message.chat);
+      if (upd){ fChat.value = String(upd.message.chat.id); msg.textContent='Найден чат: '+(upd.message.chat.title||upd.message.chat.first_name||fChat.value); }
+      else msg.textContent='Обновлений нет — напишите боту/в чат с ботом любое сообщение и повторите.';
+    }catch(e){ msg.textContent='Ошибка: проверьте токен.'; }
+  }},'Определить chat ID'));
+  btns.append(h('button',{onclick:async ()=>{
+    TG = { token:fTok.value.trim(), chatId:fChat.value.trim() };
+    msg.textContent = (await tgSend('🔄 BSC BI Education: проверка связи — сигналы PDCA подключены.')) ? 'Тест отправлен ✓ — проверьте Telegram' : 'Не отправилось: проверьте токен и chat ID';
+  }},'Тест'));
+  btns.append(h('button',{class:'ok', onclick:async ()=>{
+    const t=fTok.value.trim(), c=fChat.value.trim();
+    if (!t||!c){ msg.textContent='Нужны и токен, и chat ID.'; return; }
+    msg.textContent = (await tgSaveCfg(t,c)) ? '' : 'Не сохранилось (облако недоступно)';
+    if (!msg.textContent){ wrap.remove(); alert('✈️ Сохранено в облако команды. Сигналы включены у всех.'); tgPdcaSweep(); }
+  }},'Сохранить'));
+  form.append(btns);
+  wrap.append(form); document.body.append(wrap);
+  wrap.addEventListener('click',e=>{ if(e.target===wrap) wrap.remove(); });
+}
+$('#btnTgCfg').addEventListener('click', openTgCfg);
+setTimeout(async ()=>{ await tgLoadCfg(); tgPdcaSweep(); }, 2500);
+setInterval(tgPdcaSweep, 120000);
 
 /* ================= облачная синхронизация (Supabase) ================= */
 const CLOUD_CFG_KEY = 'bsc_cloud_cfg';
