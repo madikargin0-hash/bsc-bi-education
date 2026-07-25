@@ -625,6 +625,44 @@
     .stage{overflow:visible;}
     .wrap{padding:0;}
   }
+
+  /* ---------- PDCA ---------- */
+  #viewPdca{padding:14px 22px 40px;max-width:1500px;margin:0 auto;}
+  .pdbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;}
+  .pdbar b{font-size:16px;}
+  .pdstat{font-size:12px;color:#6E747C;font-weight:600;}
+  .pddrafts{border:1.5px dashed #C9CCD1;border-radius:10px;padding:8px 12px;margin-bottom:14px;background:#FAFAF4;}
+  .pddrafts .cap{font-size:10.5px;letter-spacing:1.5px;font-weight:800;color:#6E747C;margin-bottom:6px;}
+  .pdboard{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:start;}
+  @media(max-width:1000px){.pdboard{grid-template-columns:1fr 1fr;}}
+  .pdcol{background:#F4F4EC;border-radius:10px;padding:10px;min-height:120px;}
+  .pdcol .ch{font-size:11px;letter-spacing:1.2px;font-weight:800;margin-bottom:8px;display:flex;justify-content:space-between;}
+  .pdcol[data-st="do"] .ch{color:#2C5A82;} .pdcol[data-st="check"] .ch{color:#A9762F;}
+  .pdcol[data-st="kept"] .ch{color:#0E5E5A;} .pdcol[data-st="failed"] .ch{color:#B0533C;}
+  .pdcard{background:#fff;border:1.5px solid #E2E4E7;border-left-width:4px;border-radius:9px;padding:9px 11px;margin-bottom:8px;font-size:12.5px;line-height:1.45;}
+  .pdcard.overdue{border-color:#B0533C;box-shadow:0 0 0 2px rgba(176,83,60,.15);}
+  .pdcard[data-st="do"]{border-left-color:#2C5A82;} .pdcard[data-st="check"]{border-left-color:#D9A33B;}
+  .pdcard[data-st="kept"]{border-left-color:#0E5E5A;} .pdcard[data-st="failed"]{border-left-color:#B0533C;}
+  .pdcard[data-st="plan"]{border-left-color:#B9BDC3;}
+  .pdcard .tt{font-weight:700;margin-bottom:4px;}
+  .pdcard .mt{font-size:11.5px;color:#3A3F45;background:#F4F4EC;border-radius:6px;padding:3px 7px;margin:3px 0;display:inline-block;}
+  .pdcard .meta{font-size:11px;color:#6E747C;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .pdcard .lesson{font-size:11.5px;background:#EFF4EE;border-left:3px solid #0E5E5A;border-radius:0 6px 6px 0;padding:4px 8px;margin-top:5px;}
+  .pdcard[data-st="failed"] .lesson{background:#F8ECE9;border-left-color:#B0533C;}
+  .pdcard .acts{display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;}
+  .pdcard .acts button{font:700 11px -apple-system,sans-serif;border:1.2px solid #C9CCD1;background:#fff;border-radius:6px;padding:4px 9px;cursor:pointer;}
+  .pdcard .acts button:hover{background:#F1F1DC;}
+  .pdcard .acts .pri{border-color:#0E5E5A;color:#0E5E5A;}
+  .pdcard .acts .neg{border-color:#B0533C;color:#B0533C;}
+  .pdovl{position:fixed;inset:0;background:rgba(20,25,15,.45);z-index:9600;display:flex;align-items:flex-start;justify-content:center;padding:46px 16px;overflow:auto;}
+  .pdform{background:#fff;border-radius:14px;padding:20px 24px;max-width:560px;width:100%;font:14px -apple-system,sans-serif;box-shadow:0 24px 60px -20px rgba(0,0,0,.45);}
+  .pdform label{display:block;font-size:11px;font-weight:800;letter-spacing:.8px;color:#6E747C;margin:10px 0 3px;}
+  .pdform input,.pdform textarea,.pdform select{width:100%;border:1.5px solid #C9CCD1;border-radius:8px;padding:7px 10px;font:13px -apple-system,sans-serif;box-sizing:border-box;}
+  .pdform textarea{min-height:56px;resize:vertical;}
+  .pdform .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .pdform .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;}
+  .pdform .btns button{font:700 13px -apple-system,sans-serif;border-radius:8px;padding:8px 16px;cursor:pointer;border:1.5px solid #C9CCD1;background:#fff;}
+  .pdform .btns .ok{background:#0E5E5A;border-color:#0E5E5A;color:#fff;}
 </style>
 
 <div class="toolbar">
@@ -690,6 +728,7 @@
     <button class="vtab" id="tabItree">🚀 Дерево инициатив</button>
     <button class="vtab" id="tabCal">📅 Календарь</button>
     <button class="vtab" id="tabTeam">👥 Команда</button>
+    <button class="vtab" id="tabPdca">🔄 PDCA</button>
   </div>
   <div id="viewMap">
     <div id="fbar"></div>
@@ -704,6 +743,7 @@
   <div id="viewItree"></div>
   <div id="viewCal"></div>
   <div id="viewTeam"></div>
+  <div id="viewPdca"></div>
 </div>
 
 <div id="insights"></div>
@@ -1047,6 +1087,21 @@ function normalize(s){
     for (const [k,v] of Object.entries(s.layoutSnap.lanes)) if (isFinite(+v) && +v>=10) cl[k]=+v;
     s.layoutSnap.lanes = cl;
   }
+  s.hypotheses = (Array.isArray(s.hypotheses)?s.hypotheses:[]).map(hh=>({
+    id: hh.id||uid(),
+    text: String(hh.text||''),
+    goalId: ids.has(hh.goalId)?hh.goalId:null,
+    kpiId: hh.kpiId||null,
+    metricName: String(hh.metricName||''),
+    base: String(hh.base||''), expect: String(hh.expect||''), fact: String(hh.fact||''),
+    owner: hh.owner||null,
+    checkDue: String(hh.checkDue||''),
+    status: ['plan','do','check','kept','failed'].includes(hh.status)?hh.status:'plan',
+    signalTo: hh.signalTo||null,
+    lesson: String(hh.lesson||''),
+    linkId: hh.linkId||null,
+    ts: String(hh.ts||'')
+  }));
   s.snapshots = (Array.isArray(s.snapshots)?s.snapshots:[]).map(sn=>({
     id:sn.id||uid(), name:String(sn.name||'Снимок'), ts:String(sn.ts||''),
     kpis:(sn.kpis&&typeof sn.kpis==='object')?sn.kpis:{},
@@ -1216,6 +1271,14 @@ function computeAudit(){
   const isolated = objs.filter(o=>!linked.has(o.id));
   isolated.forEach(o=>items.push({ sev:'bad', icon:'🔗', title:`Цель «${o.title}» ни с чем не связана`, sub:'висящая цель: не входит в цепочку причин-следствий', obj:o.id }));
   if (objs.length && !isolated.length) items.push({ sev:'ok', icon:'🔗', title:'Все цели включены в цепочку связей' });
+
+  (state.hypotheses||[]).forEach(hp=>{
+    if (hypoOverdue(hp)){
+      const g = hp.goalId ? obj(hp.goalId) : null;
+      items.push({ sev:'bad', icon:'🔄', title:`Гипотеза «${hp.text.slice(0,60)}» — Check просрочен (${hp.checkDue})`,
+        sub:'PDCA: сверить факт с ожиданием и закрыть — закрепить или отбросить', obj:g?g.id:undefined });
+    }
+  });
 
   // directed path Learning -> Finance
   const adj = {};
@@ -1783,6 +1846,8 @@ function buildCard(o){
     h('span',{class:'st st-'+ost, title:'Статус цели: '+pct+'%'}));
   if (ownEl) head.append(ownEl);
   if (o.notes && o.notes.length) head.append(h('span',{class:'notebadge', title:o.notes[o.notes.length-1].text},'💬'+o.notes.length));
+  const hypN = (state.hypotheses||[]).filter(x=>x.goalId===o.id && (x.status==='plan'||x.status==='do'||x.status==='check')).length;
+  if (hypN) head.append(h('span',{class:'notebadge', title:'Открытых гипотез PDCA: '+hypN, onclick:ev=>{ev.stopPropagation();switchView('pdca');}},'🔄'+hypN));
   el.append(head, h('div',{class:'prog'}, h('i',{class:'pg-'+ost, style:'width:'+pct+'%'}), h('b',null,pct+'%')));
 
   const isCompact = compactCards && !expandedCards.has(o.id);
@@ -2165,6 +2230,11 @@ function openLinkPop(l, cx, cy, group){
   pop.innerHTML = '';
   const A = obj(l.from), B = obj(l.to);
   pop.append(h('div',{class:'pt'}, (A?A.title:'?') + ' → ' + (B?B.title:'?')));
+  if (l.status==='hyp') pop.append(h('button',{class:'tb', style:'margin:4px 0 6px;font-size:12px',
+    onclick:()=>{ closeLinkPop();
+      openHypoForm(null,{ linkId:l.id, goalId:l.to,
+        text:'Если усилить «'+(A?A.title:'?')+'», то вырастет «'+(B?B.title:'?')+'»' });
+      switchView('pdca'); }},'🔄 Проверить гипотезу через PDCA'));
   // several links between this pair: switch which one is edited
   if (group && group.length > 1){
     const sw = h('div',{class:'stchips', style:'margin:2px 0 8px'});
@@ -2978,6 +3048,7 @@ function switchView(v){
   $('#tabItree').classList.toggle('on', v==='itree');
   $('#tabCal').classList.toggle('on', v==='cal');
   $('#tabTeam').classList.toggle('on', v==='team');
+  $('#tabPdca').classList.toggle('on', v==='pdca');
   $('#viewMap').style.display  = v==='map'  ? 'block' : 'none';
   const zm = $('#zoomer'); if (zm) zm.style.display = v==='map' ? 'flex' : 'none';
   $('#viewDash').style.display = v==='dash' ? 'block' : 'none';
@@ -2987,6 +3058,7 @@ function switchView(v){
   $('#viewItree').style.display = v==='itree' ? 'block' : 'none';
   $('#viewCal').style.display = v==='cal' ? 'block' : 'none';
   $('#viewTeam').style.display = v==='team' ? 'block' : 'none';
+  $('#viewPdca').style.display = v==='pdca' ? 'block' : 'none';
   if (v==='dash') renderDash();
   if (v==='ana') renderAna();
   if (v==='tree') renderTree();
@@ -2994,6 +3066,7 @@ function switchView(v){
   if (v==='itree') renderItree();
   if (v==='cal') renderCal();
   if (v==='team') renderTeam();
+  if (v==='pdca') renderPdca();
 }
 $('#tabMap').addEventListener('click', ()=>switchView('map'));
 $('#tabDash').addEventListener('click', ()=>switchView('dash'));
@@ -3003,6 +3076,7 @@ $('#tabKtree').addEventListener('click', ()=>switchView('ktree'));
 $('#tabItree').addEventListener('click', ()=>switchView('itree'));
 $('#tabCal').addEventListener('click', ()=>switchView('cal'));
 $('#tabTeam').addEventListener('click', ()=>switchView('team'));
+$('#tabPdca').addEventListener('click', ()=>switchView('pdca'));
 
 const shortT = t => t.length>28 ? t.slice(0,26)+'…' : t;
 
@@ -3873,6 +3947,18 @@ function openStandup(){
   const done = supDone();
   const today = todayStr();
   const in14 = new Date(Date.parse(today)+14*864e5).toISOString().slice(0,10);
+  const in7 = new Date(Date.parse(today)+7*864e5).toISOString().slice(0,10);
+  const pdWeek = (state.hypotheses||[]).filter(hp=>(hp.status==='check') || (hp.status==='do' && hp.checkDue && hp.checkDue<=in7));
+  if (pdWeek.length){
+    body.append(h('div',{style:'font-weight:800;font-size:13px;margin:2px 0 6px;color:#0E5E5A'},'🔄 PDCA этой недели — сверяем факт с ожиданием'));
+    pdWeek.forEach(hp=>{
+      const late = hypoOverdue(hp);
+      body.append(h('div',{class:'supit', style:late?'border-left:3px solid #B0533C;padding-left:8px':'',
+        onclick:()=>{ closeStandup && closeStandup(); switchView('pdca'); }},
+        h('span',null,(late?'⚠ ':'')+hp.text+' · '+hypoMetricLabel(hp)+': '+(hp.base||'—')+' → ждём '+(hp.expect||'—')+' · Check '+(hp.checkDue||'—')+' · '+((personOf(hp.owner)||{}).name||groupOf&&(groupOf(hp.owner)||{}).name||'—'))));
+    });
+    body.append(h('div',{style:'height:10px'}));
+  }
   let total=0;
   const row = (key,st,label,ownerId,extra,objId)=>{
     total++;
@@ -3917,6 +4003,17 @@ function openStandup(){
 $('#btnStandup').addEventListener('click', openStandup);
 
 /* ---------- 3. Статус-отчёт ---------- */
+function pdcaReportBlock(){
+  const hs = state.hypotheses||[];
+  if (!hs.length) return '';
+  const onCheck = hs.filter(x=>x.status==='check');
+  const late = hs.filter(hypoOverdue);
+  const closed = hs.filter(x=>x.status==='kept'||x.status==='failed').slice(-6);
+  let t = '\n**🔄 PDCA:** в работе '+hs.filter(x=>x.status==='do').length+' · на проверке '+onCheck.length+' · выводов '+hs.filter(x=>x.status==='kept'||x.status==='failed').length+'\n';
+  if (late.length) t += '⚠ просрочен Check: '+late.map(x=>'«'+x.text.slice(0,40)+'» ('+hypoOwnerName(x.owner)+')').join('; ')+'\n';
+  closed.forEach(x=>{ t += (x.status==='kept'?'✔ ':'✘ ')+x.text.slice(0,60)+' — '+(x.lesson||'').slice(0,80)+'\n'; });
+  return t;
+}
 function buildReport(){
   const all = state.objectives;
   const overall = all.length?Math.round(all.reduce((sm,o)=>sm+objProgress(o),0)/all.length):0;
@@ -3955,7 +4052,8 @@ function buildReport(){
     (risks.length?`**⚠ Просрочено (${risks.length}):**\n`+risks.slice(0,6).map((x,i2)=>`${i2+1}. ${x}`).join('\n')+'\n\n':'')+
     (reds.length?`**🔴 Критичные KPI (<40%):**\n`+reds.slice(0,6).map(x=>'- '+x).join('\n')+'\n':'')+
     progress+
-    (soon.length?`\n**📅 Дедлайны 14 дней:**\n`+soon.slice(0,8).map(x=>'- '+x).join('\n'):'');
+    (soon.length?`\n**📅 Дедлайны 14 дней:**\n`+soon.slice(0,8).map(x=>'- '+x).join('\n')+'\n':'')+
+    pdcaReportBlock();
 }
 $('#btnReport').addEventListener('click', ()=>{
   $('#repText').value = buildReport();
@@ -4644,6 +4742,228 @@ switchView('map');            // show the map view on startup (it is hidden by d
 undoStack = [JSON.stringify(state)];
 updateUndoBtns();
 
+/* ================= PDCA: проверяемые гипотезы (цикл Деминга) ================= */
+function hypoOpen(hp){ return hp.status==='plan'||hp.status==='do'||hp.status==='check'; }
+function hypoKpi(hp){ if(!hp.kpiId) return null; for(const o of state.objectives) for(const k of o.kpis) if(k.id===hp.kpiId) return k; return null; }
+function hypoMetricLabel(hp){ const k=hypoKpi(hp); return k ? k.name : (hp.metricName||'метрика не задана'); }
+function hypoOverdue(hp){ return (hp.status==='do'||hp.status==='check') && hp.checkDue && hp.checkDue < todayStr(); }
+function hypoOwnerName(id){ const p=personOf(id); if(p) return p.name; const g=groupOf(id); return g?g.name:'—'; }
+
+function renderPdca(){
+  const root = $('#viewPdca'); root.innerHTML='';
+  const hs = state.hypotheses||[];
+  const cnt = st => hs.filter(x=>x.status===st).length;
+  const lessons = cnt('kept')+cnt('failed');
+
+  const bar = h('div',{class:'pdbar'},
+    h('b',null,'🔄 PDCA — гипотезы, а не инициативы'),
+    h('button',{class:'tb', onclick:()=>openHypoForm(null,{})},'＋ Гипотеза'),
+    h('span',{class:'pdstat'},'в работе '+cnt('do')+' · на проверке '+cnt('check')+' · выводов получено '+lessons),
+    h('span',{class:'pdstat', style:'margin-left:auto;max-width:520px'},'Правила: без метрики и срока в работу не берём · факт сверяем на еженедельной оперативке · провал с выводом ценнее успеха без него'));
+  root.append(bar);
+
+  const drafts = hs.filter(x=>x.status==='plan');
+  if (drafts.length){
+    const dz = h('div',{class:'pddrafts'}, h('div',{class:'cap'},'PLAN · ЧЕРНОВИКИ — ОФОРМИТЕ МЕТРИКУ И СРОК, ЧТОБЫ ВЗЯТЬ В РАБОТУ'));
+    drafts.forEach(hp=>dz.append(hypoCard(hp)));
+    root.append(dz);
+  }
+
+  const board = h('div',{class:'pdboard'});
+  [['do','В РАБОТЕ (DO)'],['check','НА ПРОВЕРКЕ (CHECK)'],['kept','ЗАКРЕПЛЕНО (ACT)'],['failed','ПРОВАЛЕНО (ACT)']].forEach(([st,cap])=>{
+    const col = h('div',{class:'pdcol', dataset:{st}});
+    col.append(h('div',{class:'ch'}, h('span',null,cap), h('span',null,String(cnt(st)))));
+    hs.filter(x=>x.status===st)
+      .sort((a,b)=>(a.checkDue||'9999').localeCompare(b.checkDue||'9999'))
+      .forEach(hp=>col.append(hypoCard(hp)));
+    board.append(col);
+  });
+  root.append(board);
+}
+
+function hypoCard(hp){
+  const g = hp.goalId ? obj(hp.goalId) : null;
+  const late = hypoOverdue(hp);
+  const el = h('div',{class:'pdcard'+(late?' overdue':''), dataset:{st:hp.status}});
+  el.append(h('div',{class:'tt'},(late?'⚠ ':'')+hp.text));
+  const k = hypoKpi(hp);
+  const mtxt = hypoMetricLabel(hp)+': '+(hp.base||'—')+' → ждём '+(hp.expect||'—')
+    + (hp.fact!=='' ? ' → факт '+hp.fact : '')
+    + (k&&k.unit?' '+k.unit:'');
+  el.append(h('div',{class:'mt'},'📏 '+mtxt));
+  const meta = h('div',{class:'meta'});
+  meta.append(h('span',null,'👤 '+hypoOwnerName(hp.owner)));
+  if (hp.checkDue) meta.append(h('span',{style:late?'color:#B0533C;font-weight:700':''},'📅 Check '+hp.checkDue));
+  if (g) meta.append(h('span',{title:g.title},'🎯 '+g.title.slice(0,28)+(g.title.length>28?'…':'')));
+  if (hp.linkId) meta.append(h('span',{title:'Проверяет гипотезу-стрелку на карте'},'↗ связь'));
+  el.append(meta);
+  if (hp.lesson) el.append(h('div',{class:'lesson'},'Вывод: '+hp.lesson));
+
+  const acts = h('div',{class:'acts'});
+  const readyErr = ()=>{
+    const errs=[];
+    if (!hp.kpiId && !(hp.metricName && hp.expect)) errs.push('метрика (KPI карты или своя с ожиданием)');
+    if (!hp.checkDue) errs.push('срок Check');
+    if (!hp.owner) errs.push('ответственный');
+    return errs;
+  };
+  if (hp.status==='plan'){
+    acts.append(h('button',{class:'pri', onclick:()=>{
+      const errs=readyErr();
+      if (errs.length){ alert('В работу — только оформленная гипотеза.\nНе хватает: '+errs.join(', ')+'.'); openHypoForm(hp); return; }
+      hp.status='do'; save(); renderPdca();
+    }},'▶ В работу'));
+  }
+  if (hp.status==='do'){
+    acts.append(h('button',{class:'pri', onclick:()=>{
+      const k2=hypoKpi(hp);
+      if (k2 && k2.actual!=='' && hp.fact==='') hp.fact=String(k2.actual);
+      hp.status='check'; save(); renderPdca();
+    }},'→ На проверку'));
+  }
+  if (hp.status==='check'){
+    acts.append(h('button',{class:'pri', onclick:()=>hypoOutcome(hp,true)},'✔ Закрепить'));
+    acts.append(h('button',{class:'neg', onclick:()=>hypoOutcome(hp,false)},'✘ Отбросить'));
+  }
+  if (hp.status==='kept'||hp.status==='failed'){
+    acts.append(h('button',{onclick:()=>{ hp.status='do'; save(); renderPdca(); }},'↩ Снова в работу'));
+  }
+  acts.append(h('button',{onclick:()=>openHypoForm(hp)},'✎'));
+  acts.append(h('button',{class:'neg', onclick:()=>{
+    if (!confirm('Удалить гипотезу «'+hp.text.slice(0,50)+'»?')) return;
+    state.hypotheses = state.hypotheses.filter(x=>x.id!==hp.id); save(); renderPdca();
+  }},'🗑'));
+  el.append(acts);
+  return el;
+}
+
+/* исход: факт + обязательный вывод (право на провал — оба исхода равноценны) */
+function hypoOutcome(hp, keep){
+  const wrap = h('div',{class:'pdovl'});
+  const k = hypoKpi(hp);
+  const form = h('div',{class:'pdform'});
+  form.append(h('b',{style:'font-size:15px'},(keep?'✔ Закрепить':'✘ Отбросить')+' гипотезу'));
+  form.append(h('div',{style:'font-size:12.5px;color:#6E747C;margin-top:4px'},hp.text));
+  form.append(h('label',null,'ФАКТ ПО МЕТРИКЕ · '+hypoMetricLabel(hp)+' (ждали: '+(hp.expect||'—')+')'));
+  const fFact = h('input',{value: hp.fact || (k?String(k.actual||''):'')});
+  form.append(fFact);
+  form.append(h('label',null,'ВЫВОД — ОБЯЗАТЕЛЕН: что поняли, что делаем дальше'));
+  const fLes = h('textarea',{placeholder: keep?'Почему сработало и как закрепляем в практику…':'Почему не сработало и что попробуем вместо…'});
+  form.append(fLes);
+  const btns = h('div',{class:'btns'});
+  btns.append(h('button',{onclick:()=>wrap.remove()},'Отмена'));
+  btns.append(h('button',{class:'ok', onclick:()=>{
+    if (!fLes.value.trim()){ alert('Вывод обязателен — это и есть ценность цикла. Даже одна фраза.'); return; }
+    hp.fact = fFact.value.trim();
+    hp.lesson = fLes.value.trim();
+    hp.status = keep ? 'kept' : 'failed';
+    if (hp.linkId){
+      const ln = state.links.find(l=>l.id===hp.linkId);
+      if (ln) ln.status = keep ? 'ok' : 'no';
+    }
+    save(); wrap.remove(); renderPdca(); renderCanvas && renderCanvas();
+  }}, keep?'Закрепить':'Отбросить с выводом'));
+  form.append(btns);
+  wrap.append(form); document.body.append(wrap);
+  wrap.addEventListener('click',e=>{ if(e.target===wrap) wrap.remove(); });
+}
+
+/* форма создания/редактирования */
+function openHypoForm(hp, preset){
+  const isNew = !hp;
+  const d = hp || { id:uid(), text:(preset&&preset.text)||'', goalId:(preset&&preset.goalId)||null,
+    kpiId:null, metricName:'', base:'', expect:'', fact:'', owner:null, checkDue:'',
+    status:'plan', signalTo:null, lesson:'', linkId:(preset&&preset.linkId)||null, ts:todayStr() };
+  const wrap = h('div',{class:'pdovl'});
+  const form = h('div',{class:'pdform'});
+  form.append(h('b',{style:'font-size:15px'},isNew?'＋ Новая гипотеза':'✎ Гипотеза'));
+
+  form.append(h('label',null,'ГИПОТЕЗА: что меняем и какой результат ждём'));
+  const fText = h('textarea',{placeholder:'Если сделаем X — метрика Y вырастет до Z'}, d.text);
+  form.append(fText);
+
+  form.append(h('label',null,'ЦЕЛЬ КАРТЫ (необязательно)'));
+  const fGoal = h('select');
+  fGoal.append(h('option',{value:''},'— без привязки —'));
+  state.objectives.forEach(o=>fGoal.append(h('option',{value:o.id, selected:o.id===d.goalId},o.title)));
+  form.append(fGoal);
+
+  form.append(h('label',null,'МЕТРИКА — ОДНО ЧИСЛО'));
+  const fKpi = h('select');
+  const fillKpi = ()=>{
+    fKpi.innerHTML='';
+    fKpi.append(h('option',{value:''},'— своя метрика (поля ниже) —'));
+    const gid = fGoal.value || d.goalId;
+    const pool = gid ? state.objectives.filter(o=>o.id===gid) : state.objectives;
+    pool.forEach(o=>o.kpis.forEach(k=>fKpi.append(h('option',{value:k.id, selected:k.id===d.kpiId}, k.name+' ('+o.title.slice(0,24)+'…)'))));
+  };
+  fillKpi();
+  fGoal.addEventListener('change', fillKpi);
+  form.append(fKpi);
+
+  const custom = h('div',{class:'row2'});
+  const fName = h('input',{placeholder:'название метрики', value:d.metricName});
+  const fExp  = h('input',{placeholder:'ожидание (число)', value:d.expect});
+  custom.append(h('div',null,h('label',null,'СВОЯ МЕТРИКА'),fName), h('div',null,h('label',null,'ЖДЁМ ЗНАЧЕНИЕ'),fExp));
+  form.append(custom);
+  const fBase = h('input',{placeholder:'текущее значение (база)', value:d.base});
+  form.append(h('label',null,'БАЗА — ЗНАЧЕНИЕ СЕЙЧАС'),fBase);
+  const syncCustom = ()=>{ custom.style.opacity = fKpi.value?'0.45':'1'; };
+  fKpi.addEventListener('change', syncCustom); syncCustom();
+
+  const r2 = h('div',{class:'row2'});
+  const boxOwner = h('div',null,h('label',null,'ОТВЕТСТВЕННЫЙ'));
+  const fOwner = ownerSelect(d.owner, ()=>{});
+  boxOwner.append(fOwner);
+  const boxDue = h('div',null,h('label',null,'СРОК CHECK'));
+  const fDue = h('input',{type:'date', value:d.checkDue});
+  boxDue.append(fDue);
+  r2.append(boxOwner,boxDue);
+  form.append(r2);
+
+  form.append(h('label',null,'СИГНАЛ ПРИ РАСХОЖДЕНИИ — КОМУ'));
+  const goalOwner = ()=>{ const g=state.objectives.find(o=>o.id===(fGoal.value||d.goalId)); return g?g.owner:null; };
+  const fSig = ownerSelect(d.signalTo || goalOwner(), ()=>{});
+  form.append(fSig);
+
+  const btns = h('div',{class:'btns'});
+  btns.append(h('button',{onclick:()=>wrap.remove()},'Отмена'));
+  btns.append(h('button',{class:'ok', onclick:()=>{
+    if (!fText.value.trim()){ alert('Сформулируйте гипотезу.'); return; }
+    d.text=fText.value.trim(); d.goalId=fGoal.value||null;
+    d.kpiId=fKpi.value||null; d.metricName=fName.value.trim(); d.expect=fExp.value.trim(); d.base=fBase.value.trim();
+    d.owner=fOwner.value||null; d.checkDue=fDue.value||''; d.signalTo=fSig.value||goalOwner()||null;
+    if (d.kpiId && !d.base){ const k=hypoKpi(d); if (k) d.base=String(k.actual||''); }
+    if (isNew){
+      const openCnt = (state.hypotheses||[]).filter(x=>hypoOpen(x)&&x.owner===d.owner).length;
+      if (d.owner && openCnt>=3 &&
+          !confirm('У '+hypoOwnerName(d.owner)+' уже '+openCnt+' незакрытых гипотез.\nПравило PDCA: новое не открываем, пока не закрыт Check по старому.\nВсё равно создать?')) return;
+      state.hypotheses.push(d);
+    }
+    save(); wrap.remove();
+    if (view==='pdca') renderPdca();
+  }}, 'Сохранить'));
+  form.append(btns);
+  wrap.append(form); document.body.append(wrap);
+  wrap.addEventListener('click',e=>{ if(e.target===wrap) wrap.remove(); });
+}
+
+/* сигнал при входе: просроченные проверки */
+function pdcaSignalCheck(){
+  const late = (state.hypotheses||[]).filter(hypoOverdue);
+  if (!late.length || document.getElementById('pdcaSignal')) return;
+  const d = document.createElement('div');
+  d.id='pdcaSignal';
+  d.style.cssText='position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:8900;background:#FFF3CD;border:1.5px solid #D9A33B;border-top:none;border-radius:0 0 10px 10px;padding:9px 16px;font:600 12.5px -apple-system,sans-serif;color:#5A4A12;display:flex;gap:10px;align-items:center;box-shadow:0 8px 24px -8px rgba(0,0,0,.25)';
+  d.innerHTML='🔄 Просрочена проверка '+late.length+' гипотез'+(late.length===1?'ы':'')+': '
+    +late.slice(0,2).map(x=>'«'+x.text.slice(0,32)+'…»').join(', ')+(late.length>2?'…':'')
+    +' <button id="pdSigGo" style="font:700 12px -apple-system,sans-serif;border:1.5px solid #7A7A2E;background:#fff;border-radius:6px;padding:3px 10px;cursor:pointer">Открыть PDCA</button>'
+    +' <button id="pdSigX" style="font:700 12px -apple-system,sans-serif;border:none;background:none;cursor:pointer">✕</button>';
+  document.body.appendChild(d);
+  d.querySelector('#pdSigGo').onclick=()=>{ d.remove(); switchView('pdca'); };
+  d.querySelector('#pdSigX').onclick=()=>d.remove();
+}
+
 /* ================= облачная синхронизация (Supabase) ================= */
 const CLOUD_CFG_KEY = 'bsc_cloud_cfg';
 const CLOUD_VER_KEY = 'bsc_cloud_ver';
@@ -4844,6 +5164,16 @@ function bscDiff(o, n){
     }
     for (const i in io) if (!jn[i]) out.push('➖ Инициатива «'+io[i].name+'»');
   }
+  const ho=Object.fromEntries(((o.hypotheses)||[]).map(x=>[x.id,x])), hn=Object.fromEntries(((n.hypotheses)||[]).map(x=>[x.id,x]));
+  for (const id in hn) if (!ho[id]) out.push('🔄 Новая гипотеза: «'+hn[id].text.slice(0,70)+'»');
+  for (const id in ho) if (!hn[id]) out.push('🔄 Гипотеза удалена: «'+ho[id].text.slice(0,70)+'»');
+  for (const id in hn){ const p=ho[id], q=hn[id]; if (!p) continue;
+    if (p.status!==q.status){
+      const nm={plan:'план',do:'в работе',check:'на проверке',kept:'ЗАКРЕПЛЕНА ✔',failed:'ОТБРОШЕНА ✘'};
+      out.push('🔄 «'+q.text.slice(0,60)+'»: '+(nm[p.status]||p.status)+' → '+(nm[q.status]||q.status));
+    }
+    if ((p.fact||'')!==(q.fact||'')) out.push('🔄 «'+q.text.slice(0,50)+'»: факт → '+(q.fact||'—'));
+  }
   const lo=(o.links||[]).length, ln=(n.links||[]).length;
   if (lo!==ln) out.push((ln>lo?'➕ ':'➖ ')+'Связи: '+lo+' → '+ln);
   let moved=false;
@@ -4980,6 +5310,8 @@ $('#btnSaveFile').addEventListener('click', ()=>{
 
 /* стартовый вид: вся карта целиком */
 setTimeout(()=>{ if (view === 'map'){ fitOn = true; applyFit(); } }, 0);
+
+setTimeout(pdcaSignalCheck, 1200);
 
 /* первый визит (пустой браузер): тихо подтягиваем командную карту из облака */
 if (FIRST_RUN){
