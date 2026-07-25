@@ -1886,12 +1886,29 @@ function buildCard(o){
         (ini.vip ? '⭐ ' : '') + (ini.name || 'Инициатива') + (kn.length ? ' 📈'+kn.length : '')),
       h('span',{class:'rv', style: late?'color:var(--bad);font-weight:700;':''}, parts.join(' · '))));
   }
+  // PDCA-гипотезы этой цели — виртуальные строки-инициативы (клик → доска)
+  if (!isCompact){
+    const goalHyps = (state.hypotheses||[]).filter(hp=>hp.goalId===o.id && (hp.status==='plan'||hp.status==='do'||hp.status==='check'));
+    if (goalHyps.length && (o.kpis.length || o.inits.length)) el.append(h('div',{class:'kidiv', style:'background:#0E5E5A'}));
+    for (const hp of goalHyps){
+      const late2 = hypoOverdue(hp);
+      const stTxt = hp.status==='plan' ? 'план' : hp.status==='do' ? 'в работе' : 'проверка';
+      const mv = (hp.base||'—')+'→'+(hp.expect||'—')+(hp.fact!==''?(' ф.'+hp.fact):'');
+      el.append(h('div',{class:'crow', title:'PDCA-гипотеза · '+hypoMetricLabel(hp)+' · '+stTxt+(hp.checkDue?' · Check '+hp.checkDue:''),
+        style:'cursor:pointer', onclick:ev=>{ ev.stopPropagation(); switchView('pdca'); }},
+        h('span',{class:'ric'}, late2 ? '⚠️' : '🔄'),
+        h('span',{class:'rt', style: late2?'color:var(--bad);font-weight:600;':'font-style:italic;'}, hp.text),
+        h('span',{class:'rv', style: late2?'color:var(--bad);font-weight:700;':''}, mv+' · '+stTxt)));
+    }
+  }
   if (compactCards){
     const vipN = o.inits.filter(i=>i.vip).length;
     const lateN = o.inits.filter(initLate).length;
     const sum = h('div',{class:'csum'},
       h('span',null,'📈 '+o.kpis.length),
       h('span',null,'🚀 '+o.inits.length + (vipN ? ' (⭐'+vipN+')' : '')));
+    const hypN2 = (state.hypotheses||[]).filter(hp=>hp.goalId===o.id && (hp.status==='plan'||hp.status==='do'||hp.status==='check')).length;
+    if (hypN2) sum.append(h('span',null,'🔄 '+hypN2));
     if (lateN) sum.append(h('span',{style:'color:var(--bad)'},'⚠ '+lateN));
     sum.append(h('button',{class:'cexp', onclick:ev=>{ ev.stopPropagation();
       expandedCards.has(o.id) ? expandedCards.delete(o.id) : expandedCards.add(o.id);
@@ -4764,17 +4781,18 @@ function pdMoveTo(hp, to){
   if (to==='do'){
     const errs = pdReadyErr(hp);
     if (errs.length){ alert('В работу — только оформленная гипотеза.\nНе хватает: '+errs.join(', ')+'.'); openHypoForm(hp); return; }
-    hp.status='do'; save(); renderPdca(); return;
+    hp.status='do'; save(); renderPdca(); pdRefreshMap(); return;
   }
   if (to==='check'){
     if (hp.status==='plan'){ const errs=pdReadyErr(hp); if (errs.length){ alert('Сначала оформите гипотезу: '+errs.join(', ')+'.'); openHypoForm(hp); return; } }
     const k = hypoKpi(hp);
     if (k && k.actual!=='' && hp.fact==='') hp.fact = String(k.actual);
-    hp.status='check'; save(); renderPdca(); return;
+    hp.status='check'; save(); renderPdca(); pdRefreshMap(); return;
   }
   if (to==='kept' || to==='failed'){ hypoOutcome(hp, to==='kept'); return; }   // статус сменится после ввода вывода
   if (to==='plan'){ hp.status='plan'; save(); renderPdca(); }
 }
+function pdRefreshMap(){ try{ renderCanvas(); }catch(e){} }
 function pdDropzone(el, st){
   el.addEventListener('dragover', e=>{ e.preventDefault(); e.dataTransfer.dropEffect='move'; el.classList.add('dover'); });
   el.addEventListener('dragleave', ()=>el.classList.remove('dover'));
@@ -4964,6 +4982,7 @@ function openHypoForm(hp, preset){
     }
     save(); wrap.remove();
     if (view==='pdca') renderPdca();
+    pdRefreshMap();
   }}, 'Сохранить'));
   form.append(btns);
   wrap.append(form); document.body.append(wrap);
